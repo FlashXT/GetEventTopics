@@ -10,10 +10,7 @@
 ###############################################################################
 import os
 import re
-import nltk
 from ToolClasses import IO
-import nltk.stem.lancaster as lc
-import nltk.stem.snowball as sb
 from smart_open import smart_open
 from gensim.corpora import Dictionary
 from nltk.stem import WordNetLemmatizer
@@ -50,13 +47,11 @@ class textPreprocess():
         # ① 去除HTML标签
         content = re.sub(r'<[^>]*>', ' ', "".join(text))
         # print(content)
-
         # ② 除去标点符号,等非字母的字符
         tokenizer = RegexpTokenizer(r'[a-z]+')
         raw = str(content).lower()
         content = tokenizer.tokenize(raw)
         # print(content)
-
         # ③ 去除停用词
         # 获取英语的停用词表
         en_stop = set(stopwords.words('english'))  # get_stop_words('en')
@@ -74,28 +69,17 @@ class textPreprocess():
         # ④ 按长度过滤
         content = [i for i in stopped_tokens if len(i) > 3]
         # print(content)
+        # ⑤ 按词性过滤
 
-        # ⑤ 词干还原（名词和动词）
         wnl = WordNetLemmatizer()
         temp1 = [wnl.lemmatize(i, pos='n') for i in content]
-        temp2 = [wnl.lemmatize(i, pos='v') for i in temp1]
+        # temp2 = [wnl.lemmatize(i, pos='v') for i in content]
         # [temp1.append(i) for i in temp2 if i not in temp1]
 
-        # print(nltk.pos_tag(temp2) )
-        content = nltk.pos_tag(temp2)
+        content = temp1
+        # print(content)
 
-
-        # ⑥ 词性过滤
-
-        doc =[]
-
-        for item in content:
-            if item[1] == 'NN' or item[1] == 'VBD':
-                doc.append(item[0])
-
-        content = doc
-
-        # ⑦ 去掉低词频的词
+        # ⑥ 去掉低词频的词
         # all_stems = sum(self.content, [])
         # stems_once = set(stem for stem in set(all_stems) if all_stems.count(stem) == 1)
         # texts = [[stem for stem in text if stem not in stems_once] for text in self.content]
@@ -107,7 +91,6 @@ class textPreprocess():
         for item in self.content:
             texts.append(self.processText(item))
 
-        # print(texts[0])
         # 生成字典和语料库
         # corpora.Dictionary 对象
         # 类似python中的字典对象, 其Key是字典中的词，其Val是词对应的唯一数值型ID
@@ -128,12 +111,12 @@ class textPreprocess():
 
         return corpus,dictionary
 
-    def LDAModeling(self,Modelpath,Destpath):
+    def LSIModeling(self,Modelpath,Destpath):
         '''
         :return:
         '''
-        if os.path.exists(os.path.join(Modelpath+"\\Model",'LdaModel.mdl')):
-            ldamodel = models.LdaModel.load(os.path.join(Modelpath+"\\Model",'LdaModel.mdl'))
+        if os.path.exists(os.path.join(Modelpath+"\\Model",'LsiModel.mdl')):
+            lsimodel = models.LsiModel.load(os.path.join(Modelpath+"\\Model",'LsiModel.mdl'))
         else:
             if os.path.exists(os.path.join(Modelpath+"\\CorDicData", 'group45494.dict')):
 
@@ -142,23 +125,22 @@ class textPreprocess():
                 corpus = corpora.MmCorpus(os.path.join(Modelpath+"\\CorDicData", 'group45494.mm'))
             else :
                 corpus, dictionary = self.Preprocessing(Modelpath+"\\CorDicData")
-            ldamodel = models.ldamodel.LdaModel(corpus, num_topics=10, id2word=dictionary, passes=5000)
-            ldamodel.save(os.path.join(Modelpath+"\\Model", 'LdaModel.mdl'))
+            lsimodel = models.lsimodel.LsiModel(corpus, num_topics=10, id2word=dictionary)
+            lsimodel.save(os.path.join(Modelpath+"\\Model", 'LsiModel.mdl'))
 
         topicDims =[]
         print("========================================================")
         print("The Docs Topic Dims:")
-        for item in ldamodel.print_topics(num_topics=10,num_words=3):
+        for item in lsimodel.print_topics(num_topics=10):
             topicDims.append([item[0],item[1]])
             print("\t\t", item)
         topicDims.insert(0,['no','topic'])
         IO.csv_writer(Destpath, topicDims)
         print("========================================================")
 
-    def GetEventTopic(self,corpuspath,modelpath,textspath,dictpath,topicspath):
+    def GetEventTopic(self,modelpath,textspath,dictpath,topicspath):
         dictionary = corpora.Dictionary.load(dictpath)
-        corpus = corpora.MmCorpus(corpuspath)
-        model = models.LdaModel.load(modelpath)
+        model = models.LsiModel.load(modelpath)
         texts = IO.csv_reader(textspath)
         events =[]
         [events.append((event[1],[event[3],event[10]])) for event in texts]
@@ -174,10 +156,9 @@ class textPreprocess():
             for item in event_lda:
                 if item[1] > temp[1]:
                     temp =item
-            print(temp)
             items = re.findall(r'(?<=\*").*?(?=")', model.print_topic(temp[0]))
-            topics.append([event[0],event[1][0]," ".join(items[0:3])])
-            print(event[0], event[1][0], items[0:3])
+            topics.append([event[0],event[1][0]," ".join(items)])
+            print(event[0], event[1][0], items)
 
         topics.insert(0,["event id","event name","event topic"])
         IO.csv_writer(topicspath,topics)
@@ -189,19 +170,18 @@ class textPreprocess():
 
 
 def main():
-    ROOTPATH = os.getcwd()+"\\..\\Data"
-    Sourpath = os.path.join(ROOTPATH+"\\SourceData\\",'Group_45494_events.csv')
-    Destpath = os.getcwd() + "\\..\\Data\\DestData\\eventTopicDimsLDA.csv"
-    ModelPath = os.getcwd()+"\\..\\Model\\LDA"
-    corpuspath = os.getcwd()+"\\..\\Model\\LDA\\CorDicData\\group45494.mm"
-    dictpath = os.getcwd()+"\\..\\Model\\LDA\\CorDicData\\group45494.dict"
-    topicspath = os.getcwd() + "\\..\\Data\\DestData\\Group45494eventTopic.csv"
+
+    Sourpath = os.getcwd()+"\\..\\Data\\SourceData\\Group_45494_events.csv"
+    Destpath = os.getcwd()+"\\..\\Data\\DestData\\eventTopicDimsLSI.csv"
+    ModelPath = os.getcwd()+"\\..\\Model\\LSI"
+    corpuspath = os.getcwd()+"\\..\\Model\\LSI\\CorDicData\\group45494.mm"
+    dictpath = os.getcwd()+"\\..\\Model\\LSI\\CorDicData\\group45494.dict"
+    topicspath = os.getcwd() + "\\..\\Data\\DestData\\Group45494eventTopicLSI.csv"
 
     text = textPreprocess(Sourpath)
-    # text.Preprocessing(ModelPath)
-    text.LDAModeling(ModelPath,Destpath)
-    #
-    text.GetEventTopic(corpuspath,ModelPath+"\\Model\\LdaModel.mdl", Sourpath,dictpath,topicspath)
+    text.LSIModeling(ModelPath,Destpath)
+
+    text.GetEventTopic(ModelPath+"\\Model\\LsiModel.mdl", Sourpath,dictpath,topicspath)
 
 
 if __name__ == "__main__":
