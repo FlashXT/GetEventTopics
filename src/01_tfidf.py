@@ -71,6 +71,7 @@ def textTFIDF(texts):
     # for item in texts_tf_idf:
     #     print(item)
     print("AAAAAAAA")
+
     # print(tfidf_vectorizer.idf_)                    # 特征对应的权重
     # print(tfidf_vectorizer.get_feature_names())     # 特征词
     # print(real_vec.toarray())                       # 语料库对应的向量表示
